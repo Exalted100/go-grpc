@@ -22,16 +22,26 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
-	"log"
-	"net"
 
+	// "fmt"
+	"log"
+	// "net"
+	"net/http"
+
+	pb "github.com/Exalted100/go-grpc/helloworld"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
-	pb "google.golang.org/grpc/examples/helloworld/helloworld"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 var (
 	port = flag.Int("port", 50051, "The server port")
+)
+
+var (
+	// command-line options:
+	// gRPC server endpoint
+	grpcServerEndpoint = flag.String("grpc-server-endpoint", "localhost:9090", "gRPC server endpoint")
 )
 
 // server is used to implement helloworld.GreeterServer.
@@ -40,21 +50,71 @@ type server struct {
 }
 
 // SayHello implements helloworld.GreeterServer
-func (s *server) SayHello(ctx context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
+func (s server) SayHello(ctx context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
 	log.Printf("Received: %v", in.GetName())
 	return &pb.HelloReply{Message: "Hello " + in.GetName()}, nil
 }
 
 func main() {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	flag.Parse()
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	// lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	// if err != nil {
+	// 	log.Fatalf("failed to listen: %v", err)
+	// }
+
+	mux := runtime.NewServeMux()
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	// s := grpc.NewServer()
+	// pb.RegisterGreeterServer(s, &server{})
+	pb.RegisterGreeterHandlerFromEndpoint(ctx, mux, *grpcServerEndpoint, opts)
+	// fmt.Println(*grpcServerEndpoint)
+
+	err := mux.HandlePath("GET", "/hello/{name}", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+		w.Write([]byte("hello " + pathParams["name"]))
+	})
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		panic(err)
 	}
-	s := grpc.NewServer()
-	pb.RegisterGreeterServer(s, &server{})
-	log.Printf("server listening at %v", lis.Addr())
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
+
+	// log.Printf("server listening at %v", lis.Addr())
+	// if err := s.Serve(lis); err != nil {
+	// 	log.Fatalf("failed to serve: %v", err)
+	// }
+	http.ListenAndServe(":8081", mux)
 }
+
+// func main() {
+// 	// creating mux for gRPC gateway. This will multiplex or route request different gRPC service
+// 	mux := runtime.NewServeMux()
+// 	// setting up a dail up for gRPC service by specifying endpoint/target url
+// 	err := pb.RegisterGreeterHandlerFromEndpoint(context.Background(), mux, "localhost:8080", []grpc.DialOption{grpc.WithInsecure()})
+
+// 	err = mux.HandlePath("GET", "/hello/{name}", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+// 		w.Write([]byte("hello " + pathParams["name"]))
+// 	})
+// 	if err != nil {
+// 		panic(err)
+// 	}
+
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+// 	// Creating a normal HTTP server
+// 	server := http.Server{
+// 		Handler: mux,
+// 	}
+// 	// creating a listener for server
+// 	l, err := net.Listen("tcp", ":8081")
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+// 	// start server
+// 	err = server.Serve(l)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+// }
