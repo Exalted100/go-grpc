@@ -1,4 +1,4 @@
-module go-gprc
+module github.com/Exalted100/go-grpc
 
 go 1.18
 
